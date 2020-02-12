@@ -1,0 +1,759 @@
+---
+title: "Final Project: Public Versus Private Schools"
+author:
+- Nahom Abraha
+- Su-Ah Lee
+- Kayla Hart
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    always_allow_html: yes
+    dev: svg
+    df_print: kable
+    fig_caption: no
+    number_sections: no
+    self_contained: yes
+    smart: yes
+    theme: default
+    toc: no
+  pdf_document:
+    dev: pdf
+    df_print: kable
+    fig_caption: no
+    highlight: tango
+    number_sections: no
+    toc: no
+  word_document:
+    toc: no
+geometry: margin=1in
+fontsize: 11pt
+documentclass: article
+---
+
+```{r setup, include = FALSE}
+# DO NOT ALTER THIS CHUNK
+# Set knitr options
+knitr::opts_chunk$set(
+  echo = FALSE,
+  eval = TRUE,
+  cache = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 5,
+  fig.asp = 0.618,
+  fig.align = "center",
+  out.width = "80%",
+  dpi = 120
+)
+# Load required packages
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(plotly))
+suppressPackageStartupMessages(library(infer))
+suppressPackageStartupMessages(library(modelr))
+suppressPackageStartupMessages(library(broom))
+suppressPackageStartupMessages(library(shiny))
+
+# Load dataset
+setwd("C:\\Users\\nahom\\Desktop\\CDS301")
+college <- read_csv("CDS301_Data.csv")
+```
+
+```{r}
+college_reduced <- college %>%
+select(
+    CONTROL, NPT4_PUB, NPT4_PRIV,
+    GRAD_DEBT_MDN10YR_SUPP, PCTFLOAN,
+    PCTPELL,MD_EARN_WNE_P10
+    ) %>%
+  rename(
+   ownership = CONTROL,
+   avg_net_price.public =  NPT4_PUB,
+   avg_net_price.private = NPT4_PRIV,
+   median_debt_monthly_payments = GRAD_DEBT_MDN10YR_SUPP,
+   federal_loan_rate = PCTFLOAN,
+   pell_grant_rate = PCTPELL,
+   median_salary = MD_EARN_WNE_P10
+  )
+```
+
+```{r}
+college_reduced1 <- college_reduced %>%
+  mutate(
+  ownership = recode(
+  ownership,
+  `1` = "public",
+  `2` = "private",
+  `3` = "private"
+      )
+  )
+```
+
+```{r}
+proper_type <- college_reduced1 %>% 
+  mutate(
+    median_debt_monthly_payments = as.numeric(median_debt_monthly_payments),
+    federal_loan_rate = as.numeric(federal_loan_rate),
+    pell_grant_rate = as.numeric(pell_grant_rate),
+    median_salary = as.numeric(median_salary),
+    avg_net_price.public = as.numeric(avg_net_price.public),
+    avg_net_price.private = as.numeric(avg_net_price.private),
+    ownership = as.character(ownership)
+  )
+```
+
+```{r}
+proper_type <- proper_type %>%
+  mutate(
+    avg_net_price_both = case_when(
+    is.numeric(avg_net_price.public) & 
+    is.na(avg_net_price.private) ~ avg_net_price.public,
+    is.na(avg_net_price.public) & 
+    is.numeric(avg_net_price.private) ~ avg_net_price.private
+        )
+  )%>%
+  select(
+    ownership,avg_net_price.public,avg_net_price.private,
+    avg_net_price_both,median_salary,federal_loan_rate,
+    pell_grant_rate,median_debt_monthly_payments
+  )
+```
+
+
+```{r}
+# Creating a new, smaller dataframe to represent income to debt ratio
+# for public and private schools by subsetting of the proper_type dataframe 
+Income_Debt <- proper_type %>%
+  select(
+    ownership,
+    median_debt_monthly_payments,
+    median_salary
+    ) %>%
+  filter(
+       !is.na(median_debt_monthly_payments) &
+       !is.na(median_salary) &
+       (ownership == "private" | ownership == "public")
+       ) %>%
+  # Creating a new variable to represent income to debt ratio
+  mutate(
+      income_to_debt_ratio = 
+      (median_salary)/(12*median_debt_monthly_payments)
+        )
+```
+
+# Abstract
+
+For students, the decision that they make concerning their post-secondary education is one that could haunt them for a large portion of their life. For example, the difference between public and private universities are stressed and mulled over by any potential student. Using the data from the National Center for Educational Statistics, conclusions about the benefits between private and public university can be made. There are many ways to compare and contrast the differences between graduates of public and private institutions, like the analysis concerning the Pell Grant disbursement, the average net price of schools, the expected earning for students following graduation, the mean of median earning for students, income to debt ratio within 10 years of graduation, and the degree programs offered by both public and private universities paints a conclusion concerning this long-time debate.
+
+  Looking at these factors, it can be seen that students who attended public universities paid a lower average net price. On average, they also earned more than private school students over most pay levels. Usually, they also received a higher salary within ten years of graduation. In contrast, private school students typically received a larger proportion of Pell Grants. However, it is important to be aware that the database utilized reported a larger number of public schools than private school data, which could potentially skew the data results. To balance the data accordingly, the conclusions drawn are based primarily on density graphs and averages to mitigate these issues. 
+
+# 1. Introduction
+
+Most people wonder if postsecondary education is right for them, and if they decide it is, deciding which school to go to is a huge decision. There are several types of schools to consider, but two primary categories are public versus private schools. With the published data from College Scoreboard, there can be conclusions drawn from the data for public and private schools in several key areas that should be considered when selecting to go to a public or private school.
+
+  An important factor of postsecondary education to consider is money, typically, the grand majority of people will recommend getting aid from an outside source. Of these, a popular choice is the Pell Grant. The amount of Pell Grants a school gives on average is one factor to consider when looking at which college is the best fit. "The figure represents the adjusted maximum Pell Grant and published prices at public and private nonprofit four-year institutions in 2019 dollars from 1999 to present" ("Pell Grants: recipients, etc., 2019).
+
+  The Federal Pell Grant is offered as an opportunity for low income students to obtain post-secondary education. This Grant is similar to a scholarship, because it does not need to be repaid by the students. There are 5,400 participating schools where one can apply for a Federal Pell Grant, and it allows a lot of flexibility with degree type and location of study for those in need. Since the FAFSA (which must be filled out in order to obtain a Pell Grant) includes the price of tuition in their formula it makes sense that more private school students receive higher amount of federal aid than public schools, because the price of private schools is greater than the price of public schools("Federal Pell Grant Program", 2015.) 
+
+  Another factor to consider is the average net price of a school. The net price refers to the price students will pay after allotted financial aid and scholarship awards. Most students receive tuition and room/board assistance from grants and scholarships that lower expected costs of attending postsecondary institutions. On average "over 70% of full-time undergraduate students receive grant aid that helps them pay for college" ("Trends in College Pricing 2019 Highlights", 2019). Although aid is available, with the steady rate of increasing price for education, taking out student or parent loans has become a necessity. Even with the increase in the prices, the cost of public university are about 73% lower than the cost at private universities. From this, it's clear that there is a greater benefit of attending a public school rather than a private school financially. Naturally, there are many other contributing factors to take into consideration when deciding which school to attend as an undergraduate student at any university ("The Cost of College Continues to Rise", n.d.).
+
+  While the cost of education is important to know, the amount of money a student could make post graduation is equally important. The amount of money a graduated student will earn will turn back to pay off the debt that had accumulated during their studies. It is difficult to say what the expected earning for a student will be just based off of whether they attended a public or private university, because of the sheer number of factors that pertains into it. These variables include but is not limited to, the degree the student earned, the grades the student received, and the accumulation of skills and experience they received in addition to classes like internships and work experience. Although it will vary greatly for every individual graduate, it is reported that "public school [graduates] earned just 80% of what private school grads earned." This is the difference of $10,000, with public school students reporting an average of $40,000 and private school students reporting $50,000 (Wei, n.d.). It is also important to note that this was data collected from students immediately after their graduation. However, the College Scoreboard data represents the averages within ten years of graduation, which shows a slightly different picture.
+
+  The interaction between the average income and debt is also very important to consider in order to avoid taking loans that cannot be paid back. The average income for a private school graduate over a lifetime is likely to be greater than a public school graduate by 10%. However, the weight of expected debt against the average income is the true value, since it will measure how much money graduates are making in comparison to the debts that they have to pay back. As a result, it may seem as though a graduate will earn a larger paycheck when graduating from a private school, but private school students take an average of four years longer to pay off their student loans, regardless of this additional income. From this, the situation is entirely dependent on one's current financial situation and their intention towards student loans to decide whether a private or public college would be more beneficial for them (Staff, 2018).
+
+
+# 2. Methods
+
+We choose the R programming language to analyze the College Scoreboard dataset from the National Center for Educational Statistics. R has numerous packages that support various statistical computations and visualization. The libraries used in this research include tidyverse, plotly, and shiny. The tidyverse library comes with several data cleaning, transforming, and plotting packages, such as dplyr, cleanr, and ggplot2. The plotly and shiny libraries were used for creating interactive plots. The dataset is made up of 7115 observations and 1977 variables. The dataset was extremely large, so we reduced it to only include the variables or columns of interest for a specific aspect of the analysis. We subset the dataset for two reasons. First, it takes less time for our machine to run changes and tests on a dataset with a smaller number of observations and variables. Second, smaller datasets allow more flexible cleaning and transformation especially since we were interested in analyzing some of the variables. Also, some of the variables that do not affect our analysis have missing values. The dplyr package in the R program has a function called na.omit() that skips entire rows with missing values. This particular function skips an entire row even if the missing values do not belong to the variables of interest. This issue can be avoided if we have a smaller dataset that only contains the variables of interest. Another important change made to the reduced datasets is renaming the variables so that they have more descriptive and easily recognized names. This is done using the rename() function from the dplyr package in the R. Having descriptive variable names enabled us to easily remember the names while creating new variables using previously existing variables in a computation. Furthermore, we also recorded some of the variables because the original dataset had variables with data types that were not suitable for our analysis. For instance, the CONTROL variable indicates whether a school is privately (with differing values for profit and non-profit schools) or publicly owned. However, the CONTROL variable had three values 1, 2, and 3 for public, non-profit private, and profit private schools, respectively. To make our analysis easier, we first renamed the variable from CONTROL to ownership and changed the data type from an integer to a character string. The character values in the ownership variable takes are public and private, meaning we have combined the profit and non-profit private schools. In addition to data cleaning, data transformation was applied to some plots to facilitate better visualizing and pattern recognition.
+
+# 3. Analysis
+The conclusions drawn from the dataset were made towards the idea of creating cohesive evidence to see if there is a difference between the benefits of attending a private or public school. The main factors that may affect students' decision include the proportion of students receiving the Pell Grant, the cost of education, expected students' earnings, expected students' debt, and the types of degree programs offered by schools. To better understand these aspects and fairly compare public versus private schools, we produced various visualizations in the coming subsections. 
+
+## 3.1. Pell Grant
+The first question was whether public schools offer more of its students Pell Grants than private schools. Our dataset included a variable named pell_grant_rate that indicates the percentage of students who received a Pell Grant for each school. The larger the value for pell_grant_rate, the more likely any given student will receive a Pell Grant. Using R, we produced a figure with two boxplots: one for each type of school. Figure 1 shown below provides the legend and color-coded box plots for the rates of Pell Grants. The orange-colored box represents private schools, and the light-green colored box represents that of public schools. The minimum and maximum values of the proportion of students who receive Pell Grants for both public and private schools are similar to each other. However, the median, first quartile, and third quartile values of pell_grant_rate for private schools exceed those of public schools' as shown in the figure below. These results imply that a student is more likely to obtain a Pell Grant in a private school rather than a public one. Although it is a reasonable thought process, we can not conclude if students are worse off attending public schools only from the results of the figure below. Considering the cost of education for private and public schools may allow us to determine whether the claim made above can be justified. As shown in the figure below, there exist some outliers for public schools. These outliers, however, are not too big compared with the highest data points for private schools. In other words, the outliers shown by the boxplot for the public schools are as much as the values located in the highest 25 percent for private schools.   
+
+###                  Box Plot of the Percentage of Students Who Received Pell Grant
+```{r, fig.height=8, fig.width=8}
+proper_type %>%
+  ggplot() +
+  geom_boxplot(
+    mapping = aes(
+      x = ownership, y = pell_grant_rate, color = ownership
+    )
+  ) +
+    labs(
+      y = "Percentage of Pell Grant Recipients"
+         ) + 
+  theme(plot.title = element_text(size = 13, face = "bold")) + 
+  theme_classic()  # Classic theme
+```
+
+## 3.2. Average Net Price
+
+The next variable to focus on is the cost of education. Most schools provide either merit or need-based financial aid, so there needs to be a consideration concerning the average net price rather than the total expenses of education. The preprocessed dataset had a variable named avg_net_price_both contains numeric values for the average net price for public and private schools. After we excluded the missing values, we created two box plots labeled by the ownership variable as shown in the figure below. 
+
+  The box plot for private school, pictured in orange-colored, shows a higher average net price range than that of public schools', pictured in light green. In other words, the values of the first quartile, median, and the third quartile are greater for private schools than public schools. This means that, taking grants and scholarships into account, students who attend private schools pay more money out-of-pocket than their public school counterparts. As a result, the claim that students are better off attending private schools may not be true after all. Even though students are more likely to receive Pell Grants in private schools, students who attend private schools also pay more after the cost of education has been reduced by the Pell Grant. The two quantities calculated in this and the previous section are good indicators for comparing private versus public schools, especially if finances play a large portion of the decision-making process. Future earnings and debt are worth measuring because they enable us to determine the gap in the standard of living between students who attend public and private schools. As shown in the figure below, there exist some outliers for private and public schools. The outliers shown by the boxplot for the public schools are as much as the values located in the highest 25 percent for private schools. 
+
+###                    Box Plot of the Average Net Price for Public and Private Schools 
+```{r fig.height = 8, fig.width = 8}
+proper_type %>%
+  ggplot()+
+  geom_boxplot(mapping = aes(x = ownership, y = avg_net_price_both, color = ownership)) +
+    labs(
+      y = 'Average Net Price'
+         ) + 
+  theme(plot.title = element_text(size = 13, face = "bold")) + 
+  theme_classic() 
+
+```
+
+## 3.3 Expected Earnings for Students
+
+The next aspect that underwent investigation was the expected income for students. Many people gauge the value of a school's degree based on how much money a student can expect to earn after graduation. Therefore, it is important to compare the post-graduation salary between private and public school graduates. The data set contains a variable representing median earnings for students for each school, private and public. The data set contains a variable representing median earnings for students for each school, private and public. First, we visually show what the data suggests. Next, we use a hypothesis test and confidence interval for the variable that represents the median salary of students to determine how statistically important the results are. 
+
+  As shown in the CDF below, for any given percentile rank in the range from 0 to 60, the corresponding salary is higher for public schools compared with that of private schools. In other words, students who attended public schools make more than those who attended private schools until we reach the point where the median salary is about 37,000 dollars and a CDF value of about 0.6. After this point, students who attended private schools make more than those who attended public schools until the point where the median salary is approximately 76,000 dollars and a CDF value of about 0.9. Then, the two CDFs are indistinguishable. From this, students who attended public schools earn more than students who attended private schools for the most part.
+
+###CDF of the Mean of Median Earnings for Private and Public Institutions
+```{r}
+income_cdf <-  proper_type %>%
+ggplot() +
+geom_step(
+mapping = aes(x = median_salary, color = ownership),
+stat = "ecdf"
+) +
+labs(
+y = "CDF") +
+theme(plot.title = element_text(size = 14, face = "bold")) +
+    theme_classic()  # Classic theme
+
+income_cdf
+```
+
+Converting the linear horizontal numeric scale to a logarithmic scale creates a better data representation and allows users to make better inferences about the behaviors of the two CDFs. In the previous CDF plots, it is difficult to certain details, like how far to the right the two CDFs intersect. The log-transformed plot of CDFs maintain the patther in the original CDF plots without losing integrity. 
+
+###Log-transformed CDF of the Mean of Median Earnings for Private and Public Institutions
+```{r}
+income_cdf <-  proper_type %>%
+ggplot() +
+geom_step(
+mapping = aes(x = median_salary, color = ownership),
+stat = "ecdf"
+) +
+  scale_x_log10(
+     breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+labs(
+y = "CDF") +
+theme(plot.title = element_text(size = 14, face = "bold")) +
+    theme_classic()  # Classic theme
+
+income_cdf
+```
+
+## 3. 4 Hypothesis Test for Median Salary of Students
+
+**Null Hypothesis:** There is no difference between the mean of median earnings for students who attended public schools and the mean of median earnings for students who attended private schools 10 years after entry. In other words, the difference between the mean of median earnings for students who attended public schools and the mean of median earnings for students who attended private schools will be equal to zero. 
+
+**Alternative Hypothesis:** In contrast, there is a difference between the mean of median earnings for students who attended public schools and the mean of median earnings for students who attended private schools 10 years after entry. In essence, the difference between the mean of median earnings for students who attended public schools and the mean of median earnings for students who attended private schools is not equal to zero. 
+
+```{r}
+college_reduced2 <- college_reduced1 %>% 
+  mutate(median_salary = as.numeric(median_salary)) %>%
+  filter(!is.na(ownership) & !is.na(median_salary))%>%
+  select(ownership,median_salary)
+
+public_private_summary_stat <- college_reduced2 %>% 
+  group_by(ownership) %>% 
+  summarize(mean_earnings = mean(median_salary)) 
+public_private_summary_stat
+
+```
+
+```{r}
+public_private_mean_earning <- public_private_summary_stat %>%
+  pull(mean_earnings)
+
+public_mean_earning <- public_private_mean_earning[2] 
+private_mean_earning <- public_private_mean_earning[1]
+
+```
+
+```{r}
+diff_in_mean_earnings <- public_mean_earning - private_mean_earning
+cat("The observed value", diff_in_mean_earnings, sep = " = $")
+
+```
+
+```{r}
+
+public_private_mean_earnings_null <- college_reduced2 %>% 
+  specify(formula = median_salary ~ ownership) %>% 
+  hypothesize(null = "independence") %>% 
+  generate(reps = 10000, type = "permute") %>% 
+  calculate(stat = "diff in means", order = combine("public", "private")) 
+```
+
+
+```{r}
+public_private_p_value_two_sided <- public_private_mean_earnings_null %>%
+  get_p_value(obs_stat = diff_in_mean_earnings, direction = "both")
+public_private_p_value_two_sided
+```
+
+The two-sided p-value is approximately 0.002, which is less than the significance level alpha of 0.05. Therefore, we reject the null hypothesis in favor of the alternative hypothesis. The difference between the mean of median earnings for students who attended public schools and the mean of median earnings for students who attended private schools 10 years after entry is statistically significant. The figure below shows the two-sided p-value with the shaded area in red, which are located at the right most and left most of the distribution.  
+
+```{r}
+public_private_mean_earnings_null %>% 
+  visualize() + 
+  shade_p_value(obs_stat = diff_in_mean_earnings, direction = "both")+ 
+  labs( x = "difference in means", 
+  title = "Two sided P-value of the Difference in Mean of Median Earnings" ) + 
+  theme(plot.title = element_text(size = 8, face = "bold"))
+```
+
+
+## 3.5 Using the 95% Confidence Interval 
+
+```{r}
+public_private_mean_earnings_bootstrap <- college_reduced2 %>% 
+  specify(formula = median_salary ~ ownership) %>%
+  generate(reps = 10000, type = "bootstrap") %>% 
+  calculate(stat = "diff in means", order = combine("public", "private")) 
+```
+
+```{r, include = FALSE}
+public_private_mean_earnings_bootstrap %>% 
+  visualize() + 
+  labs( x = "difference in means", 
+  title = "Difference in Mean of Median Earnings Bootstrap Distribution" ) +
+  theme(plot.title = element_text(size = 8, face = "bold"))
+
+```
+
+
+```{r}
+public_private_mean_earnings_ci95 <- public_private_mean_earnings_bootstrap %>%
+ get_confidence_interval()
+public_private_mean_earnings_ci95
+```
+
+The above results indicate that if we were to continue collecting new samples, we would expect that 95% of our samples will have a difference in average median earnings that lies in the above range. Besides, the lower bound of the confidence interval does not intersect with a difference of means equal to zero, which supports the conclusion we reached using our two-sided hypothesis test. The figure below shows the confidence interval by shading the null distribution using a light green color. 
+
+```{r}
+public_private_mean_earnings_bootstrap %>% 
+  visualize() + 
+  shade_confidence_interval( endpoints = public_private_mean_earnings_ci95 ) + 
+  labs( x = "difference in median means",
+  title = "Difference in Mean of Median Earnings 95% Confidence Interval" )+    
+  theme(plot.title = element_text(size = 8, face = "bold"))
+
+```
+
+The hypothesis testing and confidence interval above may support our claim. However, there could be other significant factors that influence how people judge the value of a school's degree program that are unaccounted for. We need to put other factors into consideration before any final conclusions can be made. With that in mind, we try to understand other relationships between variables.
+
+## 3.6 Income to Dept Ratio for Public Versus Private Schools
+
+People invest money, time, and effort in education to achieve better employment chances, improved standard of living, and more career options. Numerous factors affect the amount of earning for a particular student, such as skills, work experience, and the type of degree the student obtained. Through the database, a compilation of the differences in amount earned for public university graduates versus those who graduated from private schools.
+
+  To better understand the difference in income between public and private schools, we first created a variable called income_to_debt_ratio from two other numeric variables: median_salary and median_debt_monthly_payments. The median_salary variable represents the median salary for students working and not enrolled 10 years after entry to the institution, whereas the median_debt_monthly_payments variable represents the median monthly payments made by a typical student to pay off their debts.  Before calculating the income to debt ratio, we multiplied the median monthly debt payment by 12 to convert it to yearly payments so that it may match with the yearly median salary. One way to show the difference between two numeric variables is to use histograms. The figure below shows two histograms color-coded by the type of school. 
+
+  There are two downsides of using histograms to represent numeric variables. First, histograms with a larger number of bins can become noisy. HOwever, histograms with a smaller number of bins tend to have wider bin width, and are difficult to interpret as a result. Second, if we have two categories of a numerical variable with different numbers of observations, histograms may not provide a fair comparison between the two variables. Histograms use frequency rather than the proportion as the numeric scale on the y-axis. Our dataset has 1518 rows for public school and 3055 for private school. The histogram shown below does not provide a good representation of the income to debt ratio distributions because the number of data points for private schools is about twice as much as that of public schools. 
+
+###Histogram of the Income to Debt Ratio
+
+```{r fig.width=8, fig.height=8}
+hist_plot <- Income_Debt %>%
+  ggplot() +
+  geom_histogram(mapping = 
+  aes(income_to_debt_ratio, fill = ownership),alpha = 0.5, binwidth  = 7
+  )+
+ scale_x_continuous(breaks = seq(0,150,25)) +
+  labs(
+x = 'Income to debt Ratio', y = "Proportion") +
+theme(plot.title = element_text(size = 13, face = "bold"))
+  
+hist_plot
+```
+
+As shown in the two histograms below, the histogram for public schools is bimodal, meaning two dominant peaks exist. On the other hand, the histogram for private schools is unimodal. The mode features were not easily noticeable from the histogram figure above. However, categorizing the income_to_debt variable using the ownership variable, two density plots are shown below.  Although, creating separate density plots for public and private schools allows better pattern visibility, comparing the two distributions requires plotting both in one figure.   
+
+###Density Plots of the Income to Debt Ratio
+
+```{r,fig.height=6,fig.width=8}
+density_plot <- Income_Debt %>%
+  ggplot() +
+  geom_density(mapping = 
+  aes(income_to_debt_ratio, color = ownership),alpha = 0.5
+  )+
+ # scale_x_continuous(breaks = seq(0,300,25)) +
+  labs(
+x = 'Income to Debt Ratio', y = "Proportion") +
+theme(plot.title = element_text(size = 13, face = "bold"))
+
+separate_plots <- density_plot + 
+  facet_wrap(~ownership)
+separate_plots
+```
+
+
+ The figure below shows the difference in distributions of the income to debt ratios for public and private schools. The density plot for public school, represented by the light green color, is mostly on the right of the histogram for private schools, represented by the orange color. The figure below indicates that the majority of students who attend public schools tend to have a higher income to debt ratio. For the purpose of determining the range of values for the dominant peaks or any other point on the plots, we added an interactive feature to the plot using plotly library in R. The interactive feature also allows us to simultaneously visualize and compare the value of the density plot at a given input value of income to debt ratio for public and private schools.  
+
+###An Interactive Density Plot of Income to Debt Ratio
+```{r fig.width=8, fig.height=7}
+density_plot1 <- ggplotly(density_plot)
+density_plot1
+```
+
+## 3.7 Median Income Versus Yearly Debt Payment 
+The aggregated value, income to debt ratio, discussed above also enables us to compare public and private schools based on a summary statistic, income to debt ratio. However, it is also important we show the relationship between the two variables without any aggregation. Below is a scatter plot of the median yearly debt payments and salary. The figure uses a qualitative color scale to distinguish between the public and private schools. Moreover, the horizontal and vertical axis use continuous numerical values in the logarithmic scale. As discussed previously, we use a double logarithmic axis scale to spread out the data points. We also included two dotted reference lines: vertical and horizontal. The points at which the horizontal and vertical reference lines intersect is roughly the center of the plot. The two lines divide the data points into four smaller regions, which possess different value ranges. Data points located in the upper-right (first quadrant) represent the highest yearly median debt payments and salary. In contrast, data points located in the lower-left (third quadrant) section indicate the lowest yearly median debt payment and salary. Furthermore, the data points located in the upper-left (second quadrant) section represent a high salary and a low yearly median debt payment. Finally, the data points located in the lower-right (fourth quadrant) section indicate the lowest salary and the lowest yearly median payments. From the figure below, the congregation of the most amount of data points for public schools are located either in the upper-right and upper-left sections of the plot. On the contrary, most data points for private schools are spread out across all four sections of the plot. These results imply that the proportion of students above the red dotted line, which indicates a higher salary,  is higher for public schools than that of private schools. Another observation is the proportion of students below the red line, which indicates a lower salary, is higher for private schools than that of public schools. These results match with our previous findings obtained by comparing the income to debt ratio for public and private schools.  
+
+###Scatter Plot of Median Income Versus Yearly Debt Payments
+```{r fig.height = 7, fig.width = 8}
+dept_income_plot <- Income_Debt %>%
+  ggplot(
+    mapping = 
+  aes(y = median_salary, x = median_debt_monthly_payments*12,
+      shape = ownership,color = ownership),alpha = 0.3
+  ) +
+  geom_point() +
+  labs(
+       x = 'Median Yearly Debt Payments',
+       y = 'Median Salary')+
+    scale_x_log10() +
+    scale_y_log10()+
+  theme(plot.title = element_text(size = 15, face = 'bold')) +
+    theme_classic() 
+
+# Adding a horizontal and a vertical reference lines
+  dept_income_plot + geom_hline(yintercept = (3*10**4),
+             linetype = 2, color = 'red', size = 2)+
+    geom_vline(xintercept = (1500),
+             linetype = 2, color = 'green', size = 2)
+```
+
+```{r fig.height = 7, fig.width = 8, include=FALSE}
+
+# Linear regression of median salary and average net price
+linear_regression <- lm(median_salary ~ avg_net_price_both, data = proper_type)
+intercept_slope <- coefficients(linear_regression)
+
+# Equation of the regression line
+reg_line_equation <- paste0("y = ", round(intercept_slope[2],3), "*x + ", 
+                            round(intercept_slope[1],3))
+
+earn_price <- proper_type %>%
+  ggplot(
+    mapping = aes(
+      x = avg_net_price_both, y = median_salary, 
+      color = ownership
+      ),alpha = 0.2
+  ) +
+  geom_point() +
+  labs(
+    x = 'Average Net Price', y = 'Meadian Salary'
+    ) +
+  theme(plot.title = element_text(size = 13, face = "bold")) +
+    theme_classic()  # Classic theme
+
+earn_price + geom_abline(intercept = round(intercept_slope[1],3), 
+                         slope = round(intercept_slope[2],3))+
+  ggtitle(reg_line_equation)
+```
+
+## 3.8 Types of Degree Programs Offered
+
+```{r}
+# Categorizing various degree programs as one of four categories
+degree_programs_rate <-  college %>%
+  transmute(
+    CONTROL, # Ownership variable
+    
+    # Below are the variable names that are given in the original dataframe
+    # The variable names are not user friendly, so we change them in the rename fucntion 
+    
+    
+    # List of degree programs considered as Business and Law
+    PCIP01, PCIP03, PCIP04, PCIP05,
+    
+    # List of degree programs considered as STEM
+    PCIP43, PCIP44, PCIP45, PCIP46, PCIP47, PCIP48, 
+    PCIP49, PCIP50, PCIP51, PCIP52, PCIP54,
+    
+    # List of degree programs considered as Humanities
+    PCIP09, PCIP10, PCIP11, PCIP12, PCIP13, 
+    PCIP14,PCIP15, PCIP16, PCIP19, PCIP22,
+    PCIP23, PCIP24, PCIP25, PCIP26, PCIP27,
+    
+    # List of degree programs considered as other
+    PCIP29, PCIP30, PCIP31, PCIP38,
+    PCIP39, PCIP40, PCIP41, PCIP42
+    
+  ) %>%
+  rename( # Renaming all the Variables
+    
+    ownership = CONTROL,
+    
+    # Bussiness and Law
+    percentage_agriculture =  PCIP01,
+    percentage_resources = PCIP03,
+    percentage_architecture = PCIP04,
+    percentage_ethnic_cultural_gender = PCIP05,
+    
+    # STEM
+    percentage.security_law_enforcement	= PCIP43,
+    percentage.public_administration_social_service	= PCIP44,
+    percentage.social_science	= PCIP45,
+    percentage.construction	= PCIP46,
+    percentage.mechanic_repair_technology =	PCIP47,
+    percentage.precision_production	= PCIP48,
+    percentage.transportation	= PCIP49,
+    percentage.visual_performing	= PCIP50,
+    percentage.health	= PCIP51,
+    percentage.business_marketing	= PCIP52,
+    percentage.history	= PCIP54,
+    
+    # Humanities
+    percentage.communication = PCIP09,
+    percentage.communications_technology = PCIP10,
+    percentage.computer = PCIP11,
+    percentage.personal_culinary = PCIP12,
+    percentage.education =  PCIP13,
+    percentage.engineering = PCIP14,
+    percentage.engineering_technology = PCIP15,
+    percentage.language = PCIP16,
+    percentage.family_consumer_science = PCIP19,
+    percentage.legal =  PCIP22,
+    percentage.english = PCIP23,
+    percentage.humanities = PCIP24,
+    percentage.library =  PCIP25,
+    percentage.biological = PCIP26,
+    percentage.mathematics = PCIP27,
+    
+    # other
+    percentage.military = PCIP29,
+    percentage.multidiscipline = PCIP30,
+    percentage.parks_recreation_fitness = PCIP31,
+    percentage.philosophy_religious = PCIP38,
+    percentage.theology_religious_vocation = PCIP39,
+    percentage.physical_science = PCIP40,
+    percentage.science_technology = PCIP41,
+    percentage.psychology = PCIP42
+    
+  ) %>%
+  mutate( # Giving the Proper Data Types for all the Variables
+  ownership = recode(
+  ownership,
+  `1` = "public",
+  `2` = "private",
+  `3` = "private"
+      ),
+  # Adding the proportionl value of all degree programs considered as Business and Law
+    percentage_agriculture =  as.numeric(percentage_agriculture),
+    percentage_resources = as.numeric(percentage_resources),
+    percentage_architecture = as.numeric(percentage_architecture),
+    percentage_ethnic_cultural_gender = as.numeric(percentage_ethnic_cultural_gender),
+  
+  # Adding the proportionl value of all degree programs considered as STEM 
+  percentage.security_law_enforcement	= 
+  as.numeric(percentage.security_law_enforcement),
+  percentage.public_administration_social_service	= 
+  as.numeric(percentage.public_administration_social_service),
+  percentage.social_science	= 
+  as.numeric(percentage.social_science),
+  percentage.construction	= 
+  as.numeric(percentage.construction),
+  percentage.mechanic_repair_technology =	
+  as.numeric(percentage.mechanic_repair_technology),
+  percentage.precision_production	= 
+  as.numeric(percentage.precision_production),
+  percentage.transportation	= 
+  as.numeric(percentage.transportation),
+  percentage.visual_performing	= 
+  as.numeric(percentage.visual_performing),
+  percentage.health	= 
+  as.numeric(percentage.health),
+  percentage.business_marketing	= 
+  as.numeric(percentage.business_marketing),
+  percentage.history	= 
+  as.numeric(percentage.history),
+  
+  # Adding the proportionl value of all degree programs considered as Humanities
+  percentage.communication = 
+  as.numeric(percentage.communication),
+  percentage.communications_technology = 
+  as.numeric(percentage.communications_technology),
+  percentage.computer = 
+  as.numeric(percentage.computer),
+  percentage.personal_culinary = 
+  as.numeric(percentage.personal_culinary),
+  percentage.education =  
+  as.numeric(percentage.education),
+  percentage.engineering = 
+  as.numeric(percentage.engineering),
+  percentage.engineering_technology = 
+  as.numeric(percentage.engineering_technology),
+  percentage.language = 
+  as.numeric(percentage.language),
+  percentage.family_consumer_science = 
+  as.numeric(percentage.family_consumer_science),
+  percentage.legal =  
+  as.numeric(percentage.legal),
+  percentage.english = 
+  as.numeric(percentage.english),
+  percentage.humanities = 
+  as.numeric(percentage.humanities),
+  percentage.library =  
+  as.numeric(percentage.library),
+  percentage.biological = 
+  as.numeric(percentage.biological),
+  percentage.mathematics = 
+  as.numeric(percentage.mathematics),
+  
+  # Adding the proportionl value of all degree programs considered as Other
+  percentage.military = 
+  as.numeric(percentage.military),
+  percentage.multidiscipline = 
+  as.numeric(percentage.multidiscipline),
+  percentage.parks_recreation_fitness = 
+  as.numeric(percentage.parks_recreation_fitness),
+  percentage.philosophy_religious = 
+  as.numeric(percentage.philosophy_religious),
+  percentage.theology_religious_vocation = 
+  as.numeric(percentage.theology_religious_vocation),
+  percentage.physical_science = 
+  as.numeric(percentage.physical_science),
+  percentage.science_technology = 
+  as.numeric(percentage.science_technology),
+  percentage.psychology = 
+  as.numeric(percentage.psychology)
+  
+  ) 
+```
+
+
+```{r}
+degree_programs_rate <- degree_programs_rate %>%
+  mutate(
+    # Total Percentage for Business and Law
+    total_bus_law = (
+    percentage_agriculture +
+    percentage_resources +
+    percentage_architecture + 
+    percentage_ethnic_cultural_gender),
+    
+    # Total Percentage for STEM
+   total_stem = (
+    percentage.security_law_enforcement + 
+    percentage.public_administration_social_service +
+    percentage.social_science	+
+    percentage.construction	+
+    percentage.mechanic_repair_technology +
+    percentage.precision_production	+
+    percentage.transportation	+
+    percentage.visual_performing +
+    percentage.health	+
+    percentage.business_marketing	+
+    percentage.history),
+    
+    # Total Percentage for Humanities
+    total_humanities = (
+    percentage.communication +
+    percentage.communications_technology +
+    percentage.computer +
+    percentage.personal_culinary +
+    percentage.education +
+    percentage.engineering +
+    percentage.engineering_technology +
+    percentage.language +
+    percentage.family_consumer_science +
+    percentage.legal +
+    percentage.english +
+    percentage.humanities +
+    percentage.library +
+    percentage.biological +
+    percentage.mathematics),
+    
+    # Total Percentage for Other Degree Programs
+    total_others = (
+    percentage.military +
+    percentage.multidiscipline +
+    percentage.parks_recreation_fitness +
+    percentage.philosophy_religious +
+    percentage.theology_religious_vocation +
+    percentage.physical_science +
+    percentage.science_technology +
+    percentage.psychology)
+  )
+  
+# degree_programs_rate %>%
+#   head()  %>%
+#   print()
+```
+
+```{r}
+degree_types_percentage <-  degree_programs_rate[,c('ownership','total_bus_law',
+                                'total_stem','total_humanities','total_others')]
+
+degree_proportion_table <-  degree_programs_rate %>%
+  group_by(ownership) %>%
+  summarize(
+    bus_and_law = mean(total_bus_law, na.rm = T),
+    stem = mean(total_stem, na.rm = T),
+    humanities = mean(total_humanities, na.rm = T),
+    others = mean(total_others, na.rm = T),
+    toal = bus_and_law + stem + humanities + others
+  )
+
+```
+
+Another variable of interest are different types of degrees offered by private and public schools, and seeing if there are any distinctions. The original dataset includes 134 variables, and each variable represents a degree program as a percentage. For instance, one of the variables is PCIP43, which represents the percentage of degrees awarded by a particular school in Homeland Security, Law Enforcement, Firefighting, and Related Protective Services. We decided to visualize the types of degrees offered using pie charts. However, we could not visualize all 134 types of a degree using pie charts because it was very difficult to see the slices for each degree type.  Pie charts can only handle a few categories, and thus, we decided to reorganize the types of degrees based off of George Mason University's catalog. First, we made sure that every degree program falls into one of four categories: STEM, humanities, business/law, and others. Then, we added the proportional values for each degree within a category for each school. Afterwards, we took the average value of the sum for all public and private schools separately. Next, we created four numerical values that represent the percentage of degrees offered in STEM, humanities, business/law, and others for public and private schools. 
+
+  The two pie charts below show the proportion of the four types of degrees offered by public and private schools. For public schools, the percentage values for STEM, humanities, business/law, and others are 55.18, 36.53, 1.85, and 6.28, respectively.  Similarly, for private schools, the percentage values for STEM, humanities, business/law, and others are 49.06, 40.69, 0.67, and 8.97, respectively. Both pie charts show very similar proportions. The types of degrees offered in both public and private schools in ascending order based on their proportional values are as follows: business/law, others, humanities, and then STEM. Thus, we can conclude that on average both public and private schools offer more programs in STEM and humanities than in business/law. 
+
+###                               Degree Proportions Offered by Public Schools
+```{r}
+proportion_public <- subset(degree_proportion_table,
+                           ownership == 'public', select = c(-1,-6))
+
+proportion_public <- as.numeric(c(proportion_public))
+
+name = c("bus_and_law","stem",'humanities','others')
+lbls <- paste(name,' ',round(proportion_public*100,2),'%')
+pie(proportion_public,labels=lbls)
+```
+
+###                                Degree Proportions Offered by Private Schools
+```{r}
+proportion_private <- subset(degree_proportion_table,
+                           ownership == 'private', select = c(-1,-6))
+
+proportion_private <- as.numeric(c(proportion_private))
+
+name = c("bus_and_law","stem",'humanities','others')
+lbls <- paste(name,' ',round(proportion_private*100,2),'%')
+pie(proportion_private,labels=lbls)
+```
+
+# Summary
+
+To recap, private schools offer a higher percentage of Pell Grants to their students, but this grant and other scholarships/grants do not cover the full cost of school. On average, private students still end up paying more money out of pocket to attend school, which in turn, means taking out more loans and increasing their yearly debt payments after graduation. Another factor we looked at was the expected earning for students. We found that on average public students earn more than private students until we reach the pay level of $37,000, at that point private students earn more than public students until the pay level reaches $76,000 where public students begin to make more than private school students. Once the pay level reaches $100,000, they both have similar expected earnings, regardless of the school they graduated from. From the hypothesis testing of the differences between the mean of median earning for students, we conclude that the difference between public and private school students is statistically significant based off rejecting the p-value from our testing. Additionally, we concluded that most data points for public schools indicate a higher salary within ten years after graduation for public schools. From our obversations based off of the College Scoreboard, we can conclude that it is more beneficial for an individual to attend a public university than a private university, at least for the first ten years after graduation.
+
+# Bibliography
+
+College Scorecard Data. (n.d.). Retrieved October 15, 2019, from https://collegescorecard.ed.gov/data/.
+
+Federal Pell Grant Program. (2015, June 4). Retrieved from https://www2.ed.gov/programs/fpg/index.html.
+
+Pell grants: recipients, maximum Pell and average Pell - Research - College Board. (2019, November 1). Retrieved from https://research.collegeboard.org/trends/student-aid/figures-tables/pell-grants-recipients-maximum-pell-and-average-pell.
+
+Staff. (2018, September 6). Public vs. Private College ROI. Retrieved from https://www.lexingtonlaw.com/blog/loans/public-vs-private-college-roi.html.
+
+The Cost of College Continues to Rise. (n.d.). Retrieved from https://www.usnews.com/education/best-colleges/paying-for-college/articles/paying-for-college-infographic.
+
+Trends in College Pricing 2019 Highlights. (2019, November 6). Retrieved from https://research.collegeboard.org/trends/college-pricing/highlights.
+
+Wei, S. (n.d.). How Your College Choice Affects Your Career. Retrieved from https://www.nerdwallet.com/blog/nerdscholar/college-and-career-study/.
+
+What Is the Difference Between Private and Public Colleges?: Choosing a School. (2018, June 25). Retrieved from https://withfrank.org/how-to-pay-for-college/what-do-i-need-to-prepare-for-college/choosing-a-school/what-is-the-difference-between-private-and-public-colleges/.
+
+Woodruff, M. (2014, January 6). Is Public Or Private College A Better Investment? Retrieved from https://www.businessinsider.com/public-and-private-college-costs-2014-1.
